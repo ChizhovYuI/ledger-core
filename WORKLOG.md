@@ -1,0 +1,32 @@
+# Work log
+
+One line per entry: `time — tag — what`. Tags: `own` (the author's own work or
+decision), `AI` (written by an AI assistant), `both`. An AI entry stays
+`AI, not read` until the author has read the change.
+
+## 2026-11-26 to 2026-11-27, before this repository (reconstructed from notes)
+
+These entries are rebuilt from the decision notes of the plan and the file times of the
+planning notes. The times are file times, not the exact times of the decisions.
+
+- 2026-11-26 19:51 +07 — both — Read the brief; listed each open rule as a decision with options.
+- 2026-11-26 21:49 +07 — both — Throwaway prototype: replayed the stream under each option set for backdating, the fee value day and fees after a reversal; property search with Hypothesis. Not in this repository.
+- 2026-11-26 21:52 +07 — own — Decided the six rules below.
+  - A backdated entry re-checks each closed day from its value day.
+  - A late fee has the value day of the day it is for. Its booked day is the day of the check.
+  - When the cause of a fee is reversed, new linked entries refund the fee.
+  - A settlement with no authorization posts. It is flagged as unmatched.
+  - Interest uses value-dated balances as known at capitalization.
+  - Daily accruals carry the rounding fraction to the next day.
+- 2026-11-27 12:24 +07 — own — Decided the six rules below.
+  - Minimal double entry, with four internal accounts per currency.
+  - Hold expiry is a parameter. The default is 10 days.
+  - Each day line prints two closes: the close as known that day, and the restated close.
+  - Python with `decimal`.
+  - The intentional failing test: a decline stays unmarked after its cause is reversed.
+  - Criterion 5 is accepted as a rule.
+- 2026-11-27 12:28 +07 — own — Approved the plan; step 1 planned.
+
+## 2026-11-27
+
+- 2026-11-27 12:33 +07 — AI, read by the owner — Step 1: repository, `Money` with currency scale, config, append-only journal with signed two-leg postings and one balance query on two axes (value day, journal position).
