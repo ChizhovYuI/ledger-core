@@ -57,6 +57,8 @@ class PostingKind(StrEnum):
     DEBIT = "debit"
     SETTLEMENT = "settlement"
     REVERSAL = "reversal"
+    FEE = "fee"
+    FEE_REFUND = "fee_refund"
 
 
 # Sign of the customer leg per kind; None = either sign.
@@ -65,6 +67,8 @@ CUSTOMER_SIGN: dict[PostingKind, int | None] = {
     PostingKind.DEBIT: -1,
     PostingKind.SETTLEMENT: -1,
     PostingKind.REVERSAL: None,
+    PostingKind.FEE: -1,
+    PostingKind.FEE_REFUND: 1,
 }
 
 
@@ -148,6 +152,10 @@ class Journal:
             return self._accounts[code]
         except KeyError:
             raise UnknownAccountError(code) from None
+
+    @property
+    def accounts(self) -> tuple[AccountRef, ...]:
+        return tuple(sorted(self._accounts.values(), key=lambda ref: ref.code))
 
     def append(self, posting: Posting) -> int:
         if posting.posting_id in self._ids:

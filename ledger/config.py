@@ -31,8 +31,8 @@ class LedgerConfig:
         for ccy, fee in fees.items():
             if fee.currency != ccy:
                 raise ValueError(f"fee for {ccy.code} is in {fee.currency.code}")
-            if fee.is_negative():
-                raise ValueError(f"negative fee for {ccy.code}")
+            if fee.is_negative() or fee.is_zero():
+                raise ValueError(f"fee for {ccy.code} must be positive")
         if not isinstance(self.daily_interest_rate, Decimal) or self.daily_interest_rate < 0:
             raise ValueError("daily_interest_rate must be a Decimal, not negative")
         for name in ("hold_expiry_days", "window_days"):

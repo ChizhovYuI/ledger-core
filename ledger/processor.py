@@ -47,6 +47,10 @@ _ALERTS = {
 }
 
 
+# Posting ids that the day close makes; an event must not use them.
+RESERVED_ID_PREFIXES = ("FEE/", "REFUND/")
+
+
 @dataclass(frozen=True)
 class _Plan:
     postings: tuple[Posting, ...] = ()
@@ -80,6 +84,9 @@ class Ledger:
 
     def open_account(self, code: str, currency: Currency) -> AccountRef:
         return self.journal.open_account(code, currency)
+
+    def customer_accounts(self) -> tuple[AccountRef, ...]:
+        return self.journal.accounts
 
     def apply(self, event: Event) -> Outcome:
         seen = self._first.get(event.event_id)
@@ -143,7 +150,21 @@ class Ledger:
     def expire_holds(self, day: int) -> tuple[HoldChange, ...]:
         return self.holds.expire(day, self.config.hold_expiry_days)
 
-    def _plan(self, event: Event) -> _Plan:
+    def is_repeat(self, event: Event) -> bool:
+        seen = self._first.get(event.event_id)
+        return seen is not None and seen[0] == event
+
+    def precheck(self, event: Event) -> str | None:
+        """The reject code of a check that does not depend on ledger state, or None."""
+        try:
+            self._static(event)
+        except RejectedEvent as rejected:
+            return rejected.code
+        return None
+
+    def _static(self, event: Event) -> AccountRef:
+        if event.event_id.startswith(RESERVED_ID_PREFIXES):
+            raise RejectedEvent("reserved_event_id", event.event_id)
         for name in ("booked_day", "value_day"):
             day = getattr(event, name)
             if isinstance(day, bool) or not isinstance(day, int) or day < 1:
@@ -152,13 +173,18 @@ class Ledger:
             account = self.journal.account(event.account)
         except UnknownAccountError:
             raise RejectedEvent("unknown_account", event.account) from None
-        if isinstance(event, Reversal):
-            plan = self._reversal(event, account)
-        else:
+        if not isinstance(event, Reversal):
             if event.amount.currency != account.currency:
                 raise RejectedEvent("currency_mismatch", str(event.amount))
             if event.amount.amount <= 0:
                 raise RejectedEvent("non_positive_amount", str(event.amount))
+        return account
+
+    def _plan(self, event: Event) -> _Plan:
+        account = self._static(event)
+        if isinstance(event, Reversal):
+            plan = self._reversal(event, account)
+        else:
             if isinstance(event, Credit):
                 plan = self._credit(event, account)
             elif isinstance(event, Debit):

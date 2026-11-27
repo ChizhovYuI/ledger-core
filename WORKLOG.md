@@ -31,3 +31,5 @@ planning notes. The times are file times, not the exact times of the decisions.
 
 - 2026-11-27 12:33 +07 — AI, read by the owner — Step 1: repository, `Money` with currency scale, config, append-only journal with signed two-leg postings and one balance query on two axes (value day, journal position).
 - 2026-11-27 12:53 +07 — AI, read by the owner — Step 2: event handlers (credit, debit, authorization, settlement, reversal, instalments), append-only hold log with expiry, D7 posting shape and per-kind sign check, the stream E1-E10 as data.
+- 2026-11-27 13:13 +07 — own — Replayed E1-E10 by hand on paper: closes as known and restated, the Day 5 fee checks, the refunds, interest with carry, ACC-002. All numbers match the plan.
+- 2026-11-27 13:18 +07 — AI, read by the owner — Step 3: replay driver and day close. At each close: hold expiry, then the fee check again from the earliest value day of the new postings. A fee for a negative day; a linked refund when that day is no longer negative. An alert for a negative close in a currency with no fee. A late arrival is marked.

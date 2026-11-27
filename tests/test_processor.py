@@ -212,6 +212,8 @@ def _settle(event_id: str, auth_id: str, amount: str, day: int = 2) -> Settlemen
             "currency_mismatch",
             id="currency_mismatch",
         ),
+        pytest.param([], _debit("FEE/ACC-001/D2/1"), "reserved_event_id", id="reserved_fee_id"),
+        pytest.param([], _debit("REFUND/X1"), "reserved_event_id", id="reserved_refund_id"),
         pytest.param([], _debit("X1", "0"), "non_positive_amount", id="zero_amount"),
         pytest.param([], _debit("X1", "-5.00"), "non_positive_amount", id="negative_amount"),
         pytest.param([], _reversal("X1", "nope"), "unknown_target", id="unknown_target"),

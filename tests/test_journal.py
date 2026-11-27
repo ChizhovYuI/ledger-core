@@ -234,7 +234,13 @@ def _ten() -> Money:
 
 @pytest.mark.parametrize(
     ("kind", "customer_sign"),
-    [(PostingKind.CREDIT, -1), (PostingKind.DEBIT, 1), (PostingKind.SETTLEMENT, 1)],
+    [
+        (PostingKind.CREDIT, -1),
+        (PostingKind.DEBIT, 1),
+        (PostingKind.SETTLEMENT, 1),
+        (PostingKind.FEE, 1),
+        (PostingKind.FEE_REFUND, -1),
+    ],
 )
 def test_kind_sign_rejected(kind: PostingKind, customer_sign: int) -> None:
     journal = Journal()
@@ -243,6 +249,22 @@ def test_kind_sign_rejected(kind: PostingKind, customer_sign: int) -> None:
 
     with pytest.raises(PostingShapeError):
         _posting(kind, (Leg(customer, amount), Leg(_external(AED), -amount)))
+
+
+@pytest.mark.parametrize(
+    ("kind", "customer_sign"),
+    [(PostingKind.FEE, -1), (PostingKind.FEE_REFUND, 1)],
+)
+def test_fee_kind_sign_accepted(kind: PostingKind, customer_sign: int) -> None:
+    journal = Journal()
+    customer = journal.open_account("c1", AED)
+    fee = AccountRef.internal_for(InternalAccount.FEE_INCOME, AED)
+    amount = _ten() if customer_sign > 0 else -_ten()
+
+    journal.append(_posting(kind, (Leg(customer, amount), Leg(fee, -amount))))
+
+    assert journal.balance(customer) == amount
+    assert journal.balance(fee) == -amount
 
 
 def test_shape_two_customer_legs_rejected() -> None:
@@ -279,7 +301,7 @@ def test_unknown_kind_rejected() -> None:
     customer = journal.open_account("c1", AED)
 
     with pytest.raises(PostingShapeError):
-        _posting("fee", (Leg(customer, -_ten()), Leg(_external(AED), _ten())))
+        _posting("penalty", (Leg(customer, -_ten()), Leg(_external(AED), _ten())))
 
 
 _CUSTOMER_CODES = {AED: ("a1", "a2"), BHD: ("b1", "b2")}

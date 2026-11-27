@@ -67,6 +67,8 @@ def test_config_override() -> None:
         {"window_days": 1.5},
         {"rounding": "bogus"},
         {"daily_interest_rate": 0.0004},
+        {"overdraft_fee": {AED: Money.of("-25.00", AED)}},
+        {"overdraft_fee": {AED: Money.of("0.00", AED)}},
     ],
 )
 def test_config_rejects_bad_values(override: dict[str, object]) -> None:
