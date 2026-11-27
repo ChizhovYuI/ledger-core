@@ -196,7 +196,7 @@ def test_rejected_event_closes_no_day(event: Event, reason: str) -> None:
 
 
 def test_repeat_delivery_is_not_late() -> None:
-    ledger = _ledger()
+    ledger = _ledger(LedgerConfig(daily_interest_rate=Decimal(0)))
     replay = Replay(ledger)
     first = replay.feed(_credit("C1", "10.00", booked_day=1))
     replay.feed(_credit("C2", "20.00", booked_day=3))

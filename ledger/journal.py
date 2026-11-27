@@ -59,6 +59,7 @@ class PostingKind(StrEnum):
     REVERSAL = "reversal"
     FEE = "fee"
     FEE_REFUND = "fee_refund"
+    INTEREST = "interest"
 
 
 # Sign of the customer leg per kind; None = either sign.
@@ -69,6 +70,7 @@ CUSTOMER_SIGN: dict[PostingKind, int | None] = {
     PostingKind.REVERSAL: None,
     PostingKind.FEE: -1,
     PostingKind.FEE_REFUND: 1,
+    PostingKind.INTEREST: 1,
 }
 
 

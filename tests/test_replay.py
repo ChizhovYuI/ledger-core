@@ -75,9 +75,9 @@ def test_as_known_closes() -> None:
     acc_002 = [replay.as_known("ACC-002", day) for day in range(1, 7)]
 
     assert acc_001 == [
-        _aed(v) for v in ("250.00", "250.00", "650.00", "285.00", "-410.00", "285.00")
+        _aed(v) for v in ("250.00", "250.00", "650.00", "285.00", "-410.00", "285.80")
     ]
-    assert acc_002 == [_bhd("0.000")] * 5 + [_bhd("10.000")]
+    assert acc_002 == [_bhd("0.000")] * 5 + [_bhd("10.008")]
     assert str(acc_002[4].amount) == "0.000"
 
 
@@ -88,9 +88,9 @@ def test_restated_closes() -> None:
     acc_002 = [replay.restated("ACC-002", day) for day in range(1, 7)]
 
     assert acc_001 == [
-        _aed(v) for v in ("250.00", "250.00", "650.00", "285.00", "285.00", "285.00")
+        _aed(v) for v in ("250.00", "250.00", "650.00", "285.00", "285.00", "285.80")
     ]
-    assert acc_002 == [_bhd("0.000")] * 4 + [_bhd("10.000")] * 2
+    assert acc_002 == [_bhd("0.000")] * 4 + [_bhd("10.000"), _bhd("10.008")]
 
 
 def test_auth_b_declined_before_fees() -> None:
@@ -127,8 +127,12 @@ def test_end_state() -> None:
 
     assert _internal(replay, InternalAccount.FEE_INCOME) == _aed("0.00")
     assert _internal(replay, InternalAccount.FEE_INCOME, known_at=day5_position) == _aed("75.00")
-    assert journal.balance(journal.account("ACC-001")) == _aed("285.00")
+    assert journal.balance(journal.account("ACC-001")) == _aed("285.80")
     assert _internal(replay, InternalAccount.CARD_SETTLEMENT) == _aed("365.00")
     assert _internal(replay, InternalAccount.EXTERNAL) == _aed("-650.00")
+    assert _internal(replay, InternalAccount.INTEREST_EXPENSE) == _aed("-0.80")
+    bhd_expense = AccountRef.internal_for(InternalAccount.INTEREST_EXPENSE, BHD)
+    assert journal.balance(bhd_expense) == _bhd("-0.008")
+    assert journal.balance(journal.account("ACC-002")) == _bhd("10.008")
     assert [r.day for r in replay.reports] == [1, 2, 3, 4, 5, 6]
     journal.assert_balanced()

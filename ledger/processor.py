@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from ledger.config import DEFAULT_CONFIG, LedgerConfig
 from ledger.errors import LedgerError, RejectedEvent, UnknownAccountError
@@ -9,6 +11,9 @@ from ledger.events import Authorization, Credit, Debit, Event, Reversal, Settlem
 from ledger.holds import HoldBook, HoldChange, HoldChangeKind
 from ledger.journal import AccountRef, InternalAccount, Journal, Leg, Posting, PostingKind
 from ledger.money import Currency, Money, split
+
+if TYPE_CHECKING:
+    from ledger.interest import Capitalization
 
 
 class Status(StrEnum):
@@ -48,7 +53,7 @@ _ALERTS = {
 
 
 # Posting ids that the day close makes; an event must not use them.
-RESERVED_ID_PREFIXES = ("FEE/", "REFUND/")
+RESERVED_ID_PREFIXES = ("FEE/", "REFUND/", "INTEREST/")
 
 
 @dataclass(frozen=True)
@@ -73,6 +78,9 @@ class Ledger:
         self._first: dict[str, tuple[Event, Outcome]] = {}
         self._auth_events: dict[str, Authorization] = {}
         self._reversed: set[str] = set()
+        # Accrual state: never a ledger amount.
+        self.interest_carry: dict[str, Decimal] = {}
+        self.capitalizations: dict[tuple[str, int], Capitalization] = {}
 
     @property
     def events(self) -> tuple[Event, ...]:

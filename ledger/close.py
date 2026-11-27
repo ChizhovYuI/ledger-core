@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from ledger.holds import HoldChange
+from ledger.interest import Capitalization, capitalize
 from ledger.journal import AccountRef, InternalAccount, Journal, Leg, Posting, PostingKind
 from ledger.money import Money
 from ledger.processor import Ledger
@@ -35,11 +36,13 @@ class DayClose:
     expired: tuple[HoldChange, ...]
     checks: tuple[FeeCheck, ...]
     alerts: tuple[str, ...]
+    interest: tuple[Capitalization, ...] = ()
 
 
 def close_day(ledger: Ledger, day: int, since_position: int) -> DayClose:
     """Expire holds, then re-run the fee check for each day that the postings
-    appended since `since_position` can have changed (D1), oldest day first."""
+    appended since `since_position` can have changed (D1), oldest day first.
+    The last window day then capitalizes interest (D18)."""
     if isinstance(day, bool) or not isinstance(day, int) or day < 1:
         raise ValueError(f"day must be a positive int, not {day!r}")
     journal = ledger.journal
@@ -60,7 +63,8 @@ def close_day(ledger: Ledger, day: int, since_position: int) -> DayClose:
                     f"no_fee_configured: {account.code} day {d} closes at {fee_check.check}"
                 )
             checks.append(fee_check)
-    return DayClose(day, journal.position, expired, tuple(checks), tuple(alerts))
+    interest = capitalize(ledger, day) if day == ledger.config.window_days else ()
+    return DayClose(day, journal.position, expired, tuple(checks), tuple(alerts), interest)
 
 
 def _check_day(
