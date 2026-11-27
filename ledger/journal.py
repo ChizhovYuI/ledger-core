@@ -7,6 +7,7 @@ from ledger.errors import (
     CurrencyMismatchError,
     DuplicateAccountError,
     DuplicatePostingError,
+    PostingShapeError,
     UnbalancedJournalError,
     UnbalancedPostingError,
     UnknownAccountError,
@@ -54,6 +55,17 @@ class Leg:
 class PostingKind(StrEnum):
     CREDIT = "credit"
     DEBIT = "debit"
+    SETTLEMENT = "settlement"
+    REVERSAL = "reversal"
+
+
+# Sign of the customer leg per kind; None = either sign.
+CUSTOMER_SIGN: dict[PostingKind, int | None] = {
+    PostingKind.CREDIT: 1,
+    PostingKind.DEBIT: -1,
+    PostingKind.SETTLEMENT: -1,
+    PostingKind.REVERSAL: None,
+}
 
 
 def _is_day(value: object) -> bool:
@@ -90,6 +102,22 @@ class Posting:
                 raise UnbalancedPostingError(
                     f"{self.posting_id}: legs sum to {total} in {ccy.code}"
                 )
+        internal = [leg for leg in self.legs if leg.account.internal]
+        if len(self.legs) != 2 or len(internal) != 1:
+            raise PostingShapeError(
+                f"{self.posting_id}: needs one customer leg and one internal leg"
+            )
+        if self.kind not in CUSTOMER_SIGN:
+            raise PostingShapeError(f"{self.posting_id}: unknown kind {self.kind!r}")
+        sign = CUSTOMER_SIGN[self.kind]
+        if sign is not None and (self.customer_leg.amount.amount > 0) != (sign > 0):
+            raise PostingShapeError(
+                f"{self.posting_id}: customer leg sign does not match kind {self.kind}"
+            )
+
+    @property
+    def customer_leg(self) -> Leg:
+        return next(leg for leg in self.legs if not leg.account.internal)
 
 
 def _sum_by_currency(legs: tuple[Leg, ...] | list[Leg]) -> dict[Currency, Money]:
@@ -133,6 +161,9 @@ class Journal:
     def _check_known(self, account: AccountRef) -> None:
         if not account.internal and self._accounts.get(account.code) != account:
             raise UnknownAccountError(str(account))
+
+    def has_posting(self, posting_id: str) -> bool:
+        return posting_id in self._ids
 
     @property
     def postings(self) -> tuple[Posting, ...]:

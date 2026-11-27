@@ -32,3 +32,13 @@ class UnknownAccountError(LedgerError, LookupError):
 
 class DuplicateAccountError(LedgerError):
     pass
+
+
+class PostingShapeError(LedgerError, ValueError):
+    pass
+
+
+class RejectedEvent(LedgerError):
+    def __init__(self, code: str, detail: str = "") -> None:
+        super().__init__(f"{code}: {detail}" if detail else code)
+        self.code = code

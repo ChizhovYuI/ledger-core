@@ -30,3 +30,4 @@ planning notes. The times are file times, not the exact times of the decisions.
 ## 2026-11-27
 
 - 2026-11-27 12:33 +07 — AI, read by the owner — Step 1: repository, `Money` with currency scale, config, append-only journal with signed two-leg postings and one balance query on two axes (value day, journal position).
+- 2026-11-27 12:53 +07 — AI, read by the owner — Step 2: event handlers (credit, debit, authorization, settlement, reversal, instalments), append-only hold log with expiry, D7 posting shape and per-kind sign check, the stream E1-E10 as data.

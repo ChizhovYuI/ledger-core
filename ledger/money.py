@@ -97,6 +97,20 @@ class Money:
         return f"{self.amount} {self.currency.code}"
 
 
+def split(money: Money, parts: int) -> tuple[Money, ...]:
+    """Equal parts at the currency scale; leftover minor units go to the earliest parts."""
+    if isinstance(parts, bool) or not isinstance(parts, int) or parts < 1:
+        raise ValueError(f"parts must be an int of at least 1, not {parts!r}")
+    scale = money.currency.scale
+    minor = int(money.amount.scaleb(scale))
+    base, rest = divmod(abs(minor), parts)
+    sign = -1 if minor < 0 else 1
+    return tuple(
+        Money(Decimal(sign * (base + (1 if index < rest else 0))).scaleb(-scale), money.currency)
+        for index in range(parts)
+    )
+
+
 def quantize(raw: Decimal, currency: Currency, rounding: str = ROUND_HALF_EVEN) -> Money:
     """The one place where a computed value becomes an amount at the currency scale."""
     try:

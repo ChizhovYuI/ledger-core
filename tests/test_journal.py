@@ -8,6 +8,7 @@ from hypothesis import strategies as st
 from ledger.errors import (
     CurrencyMismatchError,
     DuplicatePostingError,
+    PostingShapeError,
     UnbalancedPostingError,
     UnknownAccountError,
     UnknownCurrencyError,
@@ -36,6 +37,22 @@ def _credit(
         value_day=value_day,
         booked_day=value_day if booked_day is None else booked_day,
         legs=(Leg(account, money), Leg(_external(account.currency), -money)),
+        cause="test",
+    )
+
+
+def _fee(customer: AccountRef, fee: AccountRef, amount: str) -> Posting:
+    money = Money.of(amount, customer.currency)
+    return _posting(PostingKind.DEBIT, (Leg(customer, -money), Leg(fee, money)))
+
+
+def _posting(kind: PostingKind, legs: tuple[Leg, ...]) -> Posting:
+    return Posting(
+        posting_id=f"p{next(_counter)}",
+        kind=kind,
+        value_day=1,
+        booked_day=1,
+        legs=legs,
         cause="test",
     )
 
@@ -119,10 +136,12 @@ def test_duplicate_posting_id_rejected() -> None:
 
 def test_internal_account_per_currency() -> None:
     journal = Journal()
+    customer_aed = journal.open_account("c1", AED)
+    customer_bhd = journal.open_account("c2", BHD)
     fee_aed = AccountRef.internal_for(InternalAccount.FEE_INCOME, AED)
     fee_bhd = AccountRef.internal_for(InternalAccount.FEE_INCOME, BHD)
-    journal.append(_credit(fee_aed, "25", value_day=1))
-    journal.append(_credit(fee_bhd, "1", value_day=1))
+    journal.append(_fee(customer_aed, fee_aed, "25"))
+    journal.append(_fee(customer_bhd, fee_bhd, "1"))
 
     assert fee_aed != fee_bhd
     assert journal.balance(fee_aed) == Money.of("25", AED)
@@ -209,14 +228,68 @@ def test_unknown_account_error_message() -> None:
     assert str(UnknownAccountError("x")) == "x"
 
 
+def _ten() -> Money:
+    return Money.of("10", AED)
+
+
+@pytest.mark.parametrize(
+    ("kind", "customer_sign"),
+    [(PostingKind.CREDIT, -1), (PostingKind.DEBIT, 1), (PostingKind.SETTLEMENT, 1)],
+)
+def test_kind_sign_rejected(kind: PostingKind, customer_sign: int) -> None:
+    journal = Journal()
+    customer = journal.open_account("c1", AED)
+    amount = _ten() if customer_sign > 0 else -_ten()
+
+    with pytest.raises(PostingShapeError):
+        _posting(kind, (Leg(customer, amount), Leg(_external(AED), -amount)))
+
+
+def test_shape_two_customer_legs_rejected() -> None:
+    journal = Journal()
+    first = journal.open_account("c1", AED)
+    second = journal.open_account("c2", AED)
+
+    with pytest.raises(PostingShapeError):
+        _posting(PostingKind.CREDIT, (Leg(first, _ten()), Leg(second, -_ten())))
+
+
+def test_shape_two_internal_legs_rejected() -> None:
+    fee = AccountRef.internal_for(InternalAccount.FEE_INCOME, AED)
+
+    with pytest.raises(PostingShapeError):
+        _posting(PostingKind.CREDIT, (Leg(fee, _ten()), Leg(_external(AED), -_ten())))
+
+
+def test_shape_three_legs_rejected() -> None:
+    journal = Journal()
+    customer = journal.open_account("c1", AED)
+    fee = AccountRef.internal_for(InternalAccount.FEE_INCOME, AED)
+    five = Money.of("5", AED)
+
+    with pytest.raises(PostingShapeError):
+        _posting(
+            PostingKind.CREDIT,
+            (Leg(customer, _ten()), Leg(_external(AED), -five), Leg(fee, -five)),
+        )
+
+
+def test_unknown_kind_rejected() -> None:
+    journal = Journal()
+    customer = journal.open_account("c1", AED)
+
+    with pytest.raises(PostingShapeError):
+        _posting("fee", (Leg(customer, -_ten()), Leg(_external(AED), _ten())))
+
+
 _CUSTOMER_CODES = {AED: ("a1", "a2"), BHD: ("b1", "b2")}
-_POOL_SIZE = len(_CUSTOMER_CODES[AED]) + len(InternalAccount)
 
 _nonzero_minor = st.integers(-(10**9), 10**9).filter(bool)
 _posting_shapes = st.tuples(
     st.sampled_from([AED, BHD]),
-    st.lists(st.integers(0, _POOL_SIZE - 1), min_size=2, max_size=_POOL_SIZE, unique=True),
-    st.lists(_nonzero_minor, min_size=_POOL_SIZE - 1, max_size=_POOL_SIZE - 1),
+    st.integers(0, len(_CUSTOMER_CODES[AED]) - 1),
+    st.sampled_from(list(InternalAccount)),
+    _nonzero_minor,
 )
 
 
@@ -226,36 +299,27 @@ def _account_pool(journal: Journal, currency: Currency) -> list[AccountRef]:
     return customers + internals
 
 
-def _balanced_legs(
-    pool: list[AccountRef], currency: Currency, indexes: list[int], minors: list[int]
-) -> tuple[Leg, ...]:
-    *open_indexes, closing_index = indexes
-    minors = minors[: len(open_indexes)]
-    if sum(minors) == 0:
-        minors[0] *= 2
-    legs = [
-        Leg(pool[index], Money(Decimal(minor).scaleb(-currency.scale), currency))
-        for index, minor in zip(open_indexes, minors, strict=True)
-    ]
-    total = sum((leg.amount for leg in legs), start=Money.zero(currency))
-    return (*legs, Leg(pool[closing_index], -total))
-
-
 @given(st.lists(_posting_shapes, max_size=20))
-def test_zero_sum_property(shapes: list[tuple[Currency, list[int], list[int]]]) -> None:
+def test_zero_sum_property(
+    shapes: list[tuple[Currency, int, InternalAccount, int]],
+) -> None:
     journal = Journal()
     for currency, codes in _CUSTOMER_CODES.items():
         for code in codes:
             journal.open_account(code, currency)
-    for number, (currency, indexes, minors) in enumerate(shapes):
-        legs = _balanced_legs(_account_pool(journal, currency), currency, indexes, minors)
+    for number, (currency, customer_index, internal, minor) in enumerate(shapes):
+        customer = journal.account(_CUSTOMER_CODES[currency][customer_index])
+        amount = Money(Decimal(minor).scaleb(-currency.scale), currency)
         journal.append(
             Posting(
                 posting_id=f"p{number}",
-                kind=PostingKind.DEBIT,
+                kind=PostingKind.CREDIT if minor > 0 else PostingKind.DEBIT,
                 value_day=1 + number,
                 booked_day=1 + number,
-                legs=legs,
+                legs=(
+                    Leg(customer, amount),
+                    Leg(AccountRef.internal_for(internal, currency), -amount),
+                ),
                 cause="property",
             )
         )

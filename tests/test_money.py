@@ -2,10 +2,12 @@ import dataclasses
 from decimal import Decimal
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from ledger.config import LedgerConfig
 from ledger.errors import AmountPrecisionError, CurrencyMismatchError
-from ledger.money import AED, BHD, Money, quantize
+from ledger.money import AED, BHD, Currency, Money, quantize, split
 
 
 def test_currency_scale() -> None:
@@ -70,3 +72,37 @@ def test_config_override() -> None:
 def test_config_rejects_bad_values(override: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         LedgerConfig(**override)
+
+
+def test_split_bhd_ten_in_three() -> None:
+    parts = split(Money.of("10.000", BHD), 3)
+
+    assert parts == (
+        Money.of("3.334", BHD),
+        Money.of("3.333", BHD),
+        Money.of("3.333", BHD),
+    )
+
+
+@given(
+    st.sampled_from([AED, BHD]),
+    st.integers(-(10**12), 10**12),
+    st.integers(1, 50),
+)
+def test_split_property(currency: Currency, minor: int, count: int) -> None:
+    money = Money(Decimal(minor).scaleb(-currency.scale), currency)
+
+    parts = split(money, count)
+
+    assert len(parts) == count
+    assert sum(parts, start=Money.zero(currency)) == money
+    sizes = [abs(part.amount) for part in parts]
+    assert max(sizes) - min(sizes) <= currency.quantum
+    assert sizes == sorted(sizes, reverse=True)
+    assert all(part.currency == currency for part in parts)
+
+
+@pytest.mark.parametrize("count", [0, -1, True, 1.5])
+def test_split_parts_below_one_rejected(count: object) -> None:
+    with pytest.raises(ValueError):
+        split(Money.of("10", AED), count)
