@@ -24,6 +24,9 @@ default = true
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = ["--strict-markers"]
+markers = [
+    "known_gap: the intentional failing test; excluded from make check, run by make failing",
+]
 
 [tool.ruff]
 line-length = 100

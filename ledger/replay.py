@@ -6,7 +6,7 @@ from ledger.close import DayClose, close_day
 from ledger.config import DEFAULT_CONFIG, LedgerConfig
 from ledger.events import Event
 from ledger.money import Money
-from ledger.processor import Ledger, Outcome
+from ledger.processor import AuthState, Ledger, Outcome
 from ledger.stream import STREAM, open_accounts
 
 
@@ -15,6 +15,7 @@ class Arrival:
     event: Event
     outcome: Outcome
     late_arrival: bool = False
+    repeat: bool = False
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class DayReport:
     day: int
     arrivals: tuple[Arrival, ...]
     close: DayClose
+    auth_states: tuple[tuple[str, AuthState], ...] = ()
 
     @property
     def alerts(self) -> tuple[str, ...]:
@@ -63,14 +65,15 @@ class Replay:
         if self._finished:
             raise RuntimeError("the replay is finished")
         late = False
-        accepted = not self.ledger.is_repeat(event) and self.ledger.precheck(event) is None
+        repeat = self.ledger.is_repeat(event)
+        accepted = not repeat and self.ledger.precheck(event) is None
         if accepted and _valid_day(event.booked_day):
             while self._open_day < event.booked_day:
                 self._close_open_day()
             late = event.booked_day < self._open_day
             self._last_booked = max(self._last_booked, event.booked_day)
         outcome = self.ledger.apply(event)
-        self._arrivals.append(Arrival(event, outcome, late))
+        self._arrivals.append(Arrival(event, outcome, late, repeat))
         return outcome
 
     def finish(self) -> tuple[DayReport, ...]:
@@ -83,7 +86,12 @@ class Replay:
 
     def _close_open_day(self) -> None:
         close = close_day(self.ledger, self._open_day, self._since)
-        self._reports.append(DayReport(self._open_day, tuple(self._arrivals), close))
+        states = tuple(
+            (auth_id, state)
+            for auth_id in self.ledger.auth_ids()
+            if (state := self.ledger.auth_state(auth_id)) is not None
+        )
+        self._reports.append(DayReport(self._open_day, tuple(self._arrivals), close, states))
         self._arrivals = []
         self._since = close.position
         self._open_day += 1

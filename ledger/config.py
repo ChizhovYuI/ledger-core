@@ -33,8 +33,9 @@ class LedgerConfig:
                 raise ValueError(f"fee for {ccy.code} is in {fee.currency.code}")
             if fee.is_negative() or fee.is_zero():
                 raise ValueError(f"fee for {ccy.code} must be positive")
-        if not isinstance(self.daily_interest_rate, Decimal) or self.daily_interest_rate < 0:
-            raise ValueError("daily_interest_rate must be a Decimal, not negative")
+        rate = self.daily_interest_rate
+        if not isinstance(rate, Decimal) or not rate.is_finite() or not 0 <= rate <= 1:
+            raise ValueError("daily_interest_rate must be a finite Decimal from 0 to 1")
         for name in ("hold_expiry_days", "window_days"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:

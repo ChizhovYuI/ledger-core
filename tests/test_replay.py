@@ -133,6 +133,8 @@ def test_end_state() -> None:
     assert _internal(replay, InternalAccount.INTEREST_EXPENSE) == _aed("-0.80")
     bhd_expense = AccountRef.internal_for(InternalAccount.INTEREST_EXPENSE, BHD)
     assert journal.balance(bhd_expense) == _bhd("-0.008")
+    bhd_external = AccountRef.internal_for(InternalAccount.EXTERNAL, BHD)
+    assert journal.balance(bhd_external) == _bhd("-10.000")
     assert journal.balance(journal.account("ACC-002")) == _bhd("10.008")
     assert [r.day for r in replay.reports] == [1, 2, 3, 4, 5, 6]
     journal.assert_balanced()

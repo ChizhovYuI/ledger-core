@@ -155,6 +155,16 @@ class Ledger:
             return AuthState.UNMATCHED
         return None
 
+    def auth_ids(self) -> tuple[str, ...]:
+        """Every auth id seen, in arrival order: authorizations, and settlements with
+        no authorization."""
+        ids = (
+            e.auth_id
+            for e, o in self._first.values()
+            if isinstance(e, Authorization | Settlement) and o.status is not Status.REJECTED
+        )
+        return tuple(dict.fromkeys(ids))
+
     def expire_holds(self, day: int) -> tuple[HoldChange, ...]:
         return self.holds.expire(day, self.config.hold_expiry_days)
 

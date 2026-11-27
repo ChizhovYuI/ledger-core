@@ -38,3 +38,9 @@ planning notes. The times are file times, not the exact times of the decisions.
   - It rounds each day after it adds the carry. The lost fraction moves to the next day.
   - Each account gets one capitalization credit with an `interest_expense` leg.
   - The carry stays in the accrual state. It is never a ledger amount.
+- 2026-11-27 13:54 +07 — AI, read by the owner — Step 5: replay output and tests.
+  - `make replay` prints each day: both closes, fee checks, authorization states, errors, alerts. Day 6 also prints interest.
+  - Overrides: `--fee`, `--rate`, `--hold-expiry`.
+  - One test for each criterion, with accept or refuse and the reason.
+  - A zero-sum property over generated streams.
+  - The intentional failing test, run by `make failing`.
