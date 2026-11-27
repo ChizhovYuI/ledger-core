@@ -150,7 +150,8 @@ is accepted, then the close stops with `AmountPrecisionError`. No effect here.
 after the Day 6 close restates the fees, not the interest. No effect here.
 
 **Fee on a fee.** While a balance stays negative, each day's fee makes the next day more
-negative. A 1.00 debit on Day 1 with no credit gives six fees: 150.00 by Day 6. The rule
+negative. A 1.00 debit on Day 1, paid back by a 1.00 credit on Day 2, still gives six
+fees: 150.00 by Day 6. After Day 1, only the fees keep the balance negative. The rule
 says nothing to stop it.
 
 **Backdated fees on closed days.** The rule charges a day after it closed. The US CFPB

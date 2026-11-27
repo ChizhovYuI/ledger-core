@@ -1,4 +1,4 @@
-.PHONY: install fmt lint test check replay failing
+.PHONY: install fmt lint test check replay failing timing pdf
 
 install:
 	uv sync
@@ -20,5 +20,12 @@ failing:
 
 replay:
 	uv run python -m ledger $(ARGS)
+
+# Not in check: about 1 minute.
+timing:
+	PYTHONPATH=. uv run python scripts/timing.py
+
+pdf:
+	typst compile docs/part2.typ docs/part2.pdf
 
 check: lint test

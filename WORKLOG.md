@@ -49,3 +49,4 @@ planning notes. The times are file times, not the exact times of the decisions.
 - 2026-11-27 14:55 +07 — AI, read by the owner — Step 7: a rejected event closes no day. `Replay.feed` asks `Ledger.check` for the reject code that `apply` would give, before the close. Two known limits named in `AMBIGUITIES.md`.
 - 2026-11-27 15:20 +07 — AI, read by the owner — Step 7 review fix: a settlement for an unmatched auth id on another account is rejected (`auth_on_other_account`).
 - 2026-11-27 15:35 +07 — AI, read by the owner — Step 7 second review: a reversed settlement frees its auth id; too many instalments are rejected before the split.
+- 2026-11-27 16:41 +07 — AI, read by the owner — Step 8: Part 2 PDF (`docs/part2.pdf`, 3 pages) and `make timing`. 100x postings: balance 114x slower, close 121x. Regulator rows read in a browser first; two not confirmed, so removed.

@@ -85,6 +85,9 @@ The reasons for each refusal are in [REJECTED.md](REJECTED.md).
 `tests/` has one file per module, plus `test_criteria.py`, `test_properties.py` and
 `test_known_gap.py`.
 
+Part 2, architecture and trade-offs: [docs/part2.pdf](docs/part2.pdf) (source
+`docs/part2.typ`, `make pdf`; timings: `make timing`).
+
 Also: [NUMBERS.md](NUMBERS.md) (constants), [AMBIGUITIES.md](AMBIGUITIES.md) (open
 rules), [REJECTED.md](REJECTED.md) (refusals, abandoned approaches),
 [WORKLOG.md](WORKLOG.md) (the work, with times).
