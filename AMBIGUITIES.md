@@ -45,19 +45,15 @@ as known at capitalization, the same definition as the fee rule. Effect: the bas
 the restated closes 250, 250, 650, 285, 285, 285; total 0.80. `test_acc_001_accruals`
 
 **Sum exactly.** Brief: accruals "must sum exactly to the capitalized total". Chosen:
-round each day after adding the carry. 0.802 exact, 0.80 credited, 0.002 carried.
-`test_accrual_sum_rule`, `test_criterion_8_remainder_is_carried`
-
-**The carry is not money.** Chosen: the carry has more decimals and stays in the accrual
-state for the next period. Each ledger amount has its currency scale.
-`test_carry_not_a_ledger_amount`
+round each day after adding the carry. 0.802 exact, 0.80 credited, 0.002 carried. The
+carry is not money: it has more decimals and stays in the accrual state for the next
+period. Each ledger amount has its currency scale. `test_accrual_sum_rule`,
+`test_criterion_8_remainder_is_carried`, `test_carry_not_a_ledger_amount`
 
 **Capitalization and the Day 6 close.** Brief: "a single credit at end of Day 6".
 Chosen: value day 6, posted at the end of the Day 6 close, after the fee checks. Both
-Day 6 closes include it. `test_capitalization_posting`
-
-**Fee check before the interest credit.** So the Day 6 fee check does not see the
-interest: a fee can stay on a day that the interest makes positive. No effect here.
+Day 6 closes include it. The Day 6 fee check does not see the interest: a fee can stay on
+a day that the interest makes positive. No effect here. `test_capitalization_posting`
 
 **Interest at an Islamic bank.** The brief names interest. The rule is applied as given.
 The author has no basis to map it to a profit-sharing product, and does not try. With
@@ -86,7 +82,8 @@ Day 5 is 0.000; restated 10.000. `test_e10_late_arrival`
 
 **When the close runs.** Brief: criterion 1 says "evaluated at end of Day 5". Chosen:
 fees, refunds and hold expiry run at the day close. A day closes when an event of a later
-day arrives, and at the end of the stream. `test_auth_b_declined_before_fees`
+day arrives, and at the end of the stream. A rejected event closes no day.
+`test_auth_b_declined_before_fees`, `test_rejected_event_closes_no_day`
 
 **Two closes per day.** Brief: "closing ledger balance", one number. Chosen: print the
 close as known (primary; taken at the close, in arrival order) and the restated close.
@@ -141,8 +138,11 @@ first seen on an unmatched settlement. A settlement for an auth on another accou
 rejected (`auth_on_other_account`). `test_auth_id_first_used_by_unmatched_settlement_rejected`
 
 **Reserved ids.** Chosen: event ids that start with `FEE/`, `REFUND/` or `INTEREST/` are
-rejected (`reserved_event_id`): the close makes those posting ids.
-`test_interest_id_reserved`
+rejected (`reserved_event_id`): the close makes those posting ids. `test_interest_id_reserved`
+
+**Known limits of the code.** An event with a very large booked day makes the replay close
+each day up to it, so the run does not end in practice. An amount near the `decimal` limit
+is accepted, then the close stops with `AmountPrecisionError`. No effect here.
 
 ## Known risks of the rule
 

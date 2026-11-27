@@ -6,7 +6,7 @@ from hypothesis import strategies as st
 
 from ledger.close import FeeAction, close_day
 from ledger.config import LedgerConfig
-from ledger.events import Authorization, Credit, Debit, Event
+from ledger.events import Authorization, Credit, Debit, Event, Reversal
 from ledger.journal import Journal, Leg, PostingKind
 from ledger.money import AED, BHD, Currency, Money
 from ledger.processor import Ledger, Status
@@ -171,6 +171,22 @@ def test_refund_then_new_fee() -> None:
         pytest.param(
             _debit("X9", "1.00", booked_day=9, value_day=0), "invalid_day", id="invalid_value_day"
         ),
+        pytest.param(
+            Credit("X9", "c1", booked_day=9, value_day=9, amount=_aed("10.00"), instalments=0),
+            "invalid_instalments",
+            id="invalid_instalments",
+        ),
+        pytest.param(
+            Credit("X9", "c1", booked_day=9, value_day=9, amount=_aed("0.02"), instalments=3),
+            "instalment_below_minor_unit",
+            id="instalment_below_minor_unit",
+        ),
+        pytest.param(_debit("D1", "20.00", booked_day=9), "event_id_reused", id="event_id_reused"),
+        pytest.param(
+            Reversal("X9", "c1", booked_day=9, value_day=9, target_event_id="nope"),
+            "unknown_target",
+            id="unknown_target",
+        ),
     ],
 )
 def test_rejected_event_closes_no_day(event: Event, reason: str) -> None:
@@ -192,6 +208,24 @@ def test_rejected_event_closes_no_day(event: Event, reason: str) -> None:
     (arrival,) = replay.report(2).arrivals
     assert arrival.event.event_id == "C2"
     assert arrival.late_arrival is False
+    assert [r.day for r in replay.reports] == [1, 2, 3, 4, 5, 6]
+
+
+def test_rejected_auth_id_reuse_closes_no_day() -> None:
+    ledger = _ledger()
+    replay = Replay(ledger)
+    replay.feed(_credit("C1", "100.00", booked_day=1))
+    auth = Authorization("A1", "c1", booked_day=1, value_day=1, auth_id="H1", amount=_aed("10.00"))
+    assert replay.feed(auth).status is Status.APPROVED
+    reuse = Authorization("A9", "c1", booked_day=9, value_day=9, auth_id="H1", amount=_aed("5.00"))
+
+    outcome = replay.feed(reuse)
+
+    assert outcome.status is Status.REJECTED
+    assert outcome.reason == "auth_id_reused"
+    assert replay.reports == ()
+    assert replay.open_day == 1
+    replay.finish()
     assert [r.day for r in replay.reports] == [1, 2, 3, 4, 5, 6]
 
 

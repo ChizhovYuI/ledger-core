@@ -6,7 +6,7 @@ from ledger.close import DayClose, close_day
 from ledger.config import DEFAULT_CONFIG, LedgerConfig
 from ledger.events import Event
 from ledger.money import Money
-from ledger.processor import AuthState, Ledger, Outcome
+from ledger.processor import AuthState, Ledger, Outcome, Status
 from ledger.stream import STREAM, open_accounts
 
 
@@ -36,10 +36,6 @@ class DayReport:
         return late + self.close.alerts
 
 
-def _valid_day(day: object) -> bool:
-    return isinstance(day, int) and not isinstance(day, bool) and day >= 1
-
-
 class Replay:
     """Feeds events in arrival order. A day closes when an event of a later day
     arrives, and at `finish()`. Days with no event close too."""
@@ -66,14 +62,17 @@ class Replay:
             raise RuntimeError("the replay is finished")
         late = False
         repeat = self.ledger.is_repeat(event)
-        accepted = not repeat and self.ledger.precheck(event) is None
-        if accepted and _valid_day(event.booked_day):
+        code = None if repeat else self.ledger.check(event)
+        if not repeat and code is None:
             while self._open_day < event.booked_day:
                 self._close_open_day()
             late = event.booked_day < self._open_day
-            self._last_booked = max(self._last_booked, event.booked_day)
         outcome = self.ledger.apply(event)
         self._arrivals.append(Arrival(event, outcome, late, repeat))
+        if not repeat and (outcome.status is Status.REJECTED) != (code is not None):
+            raise RuntimeError("check and apply disagree")
+        if not repeat and outcome.status is not Status.REJECTED:
+            self._last_booked = max(self._last_booked, event.booked_day)
         return outcome
 
     def finish(self) -> tuple[DayReport, ...]:

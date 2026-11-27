@@ -1,8 +1,10 @@
 from ledger.close import FeeAction
+from ledger.events import Credit
 from ledger.journal import AccountRef, InternalAccount, Posting, PostingKind
 from ledger.money import AED, BHD, Money
-from ledger.processor import Status
+from ledger.processor import Ledger, Status
 from ledger.replay import Replay, replay_stream
+from ledger.stream import STREAM, open_accounts
 
 
 def _aed(value: str) -> Money:
@@ -138,3 +140,23 @@ def test_end_state() -> None:
     assert journal.balance(journal.account("ACC-002")) == _bhd("10.008")
     assert [r.day for r in replay.reports] == [1, 2, 3, 4, 5, 6]
     journal.assert_balanced()
+
+
+def test_rejected_late_event_after_stream() -> None:
+    ledger = Ledger()
+    open_accounts(ledger)
+    replay = Replay(ledger)
+    for event in STREAM:
+        replay.feed(event)
+    late = Credit("E11", "ACC-001", booked_day=9, value_day=9, amount=_aed("10.00"), instalments=0)
+
+    outcome = replay.feed(late)
+    replay.finish()
+
+    assert outcome.status is Status.REJECTED
+    assert outcome.reason == "invalid_instalments"
+    assert [r.day for r in replay.reports] == [1, 2, 3, 4, 5, 6]
+    assert sorted(ledger.capitalizations) == [("ACC-001", 6), ("ACC-002", 6)]
+    journal = ledger.journal
+    assert journal.balance(journal.account("ACC-001")) == _aed("285.80")
+    assert journal.balance(journal.account("ACC-002")) == _bhd("10.008")

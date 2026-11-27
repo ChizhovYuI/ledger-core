@@ -197,7 +197,7 @@ def _settle(event_id: str, auth_id: str, amount: str, day: int = 2) -> Settlemen
     )
 
 
-@pytest.mark.parametrize(
+_REJECTIONS = pytest.mark.parametrize(
     ("setup", "event", "reason"),
     [
         pytest.param(
@@ -246,6 +246,9 @@ def _settle(event_id: str, auth_id: str, amount: str, day: int = 2) -> Settlemen
         ),
     ],
 )
+
+
+@_REJECTIONS
 def test_rejected_event_changes_nothing(setup: list[Event], event: Event, reason: str) -> None:
     ledger = _funded()
     for prior in setup:
@@ -258,6 +261,61 @@ def test_rejected_event_changes_nothing(setup: list[Event], event: Event, reason
     assert outcome.reason == reason
     assert outcome.posting_ids == ()
     assert _snapshot(ledger) == before
+
+
+def _state(
+    ledger: Ledger,
+) -> tuple[int, tuple[HoldChange, ...], tuple[Outcome, ...], tuple[Event, ...]]:
+    return ledger.journal.position, ledger.holds.changes, ledger.outcomes, ledger.events
+
+
+@_REJECTIONS
+def test_check_matches_apply_rejection(setup: list[Event], event: Event, reason: str) -> None:
+    ledger = _funded()
+    for prior in setup:
+        ledger.apply(prior)
+    before = _state(ledger)
+
+    code = ledger.check(event)
+
+    assert code == reason
+    assert _state(ledger) == before
+    assert ledger.apply(event).reason == code
+
+
+def test_check_accepted_event_is_none() -> None:
+    ledger = _funded()
+    before = _state(ledger)
+
+    code = ledger.check(_debit("X1"))
+
+    assert code is None
+    assert _state(ledger) == before
+    assert ledger.apply(_debit("X1")).status is Status.POSTED
+
+
+def test_check_repeat_of_rejected_gives_cached_reason() -> None:
+    ledger = _funded()
+    reversal = _reversal("X1", "D0")
+    ledger.apply(reversal)
+    ledger.apply(_debit("D0"))
+    before = _state(ledger)
+
+    code = ledger.check(reversal)
+
+    assert code == "unknown_target"
+    assert _state(ledger) == before
+
+
+def test_check_repeat_of_accepted_is_none() -> None:
+    ledger = _funded()
+    ledger.apply(_debit("D0"))
+    before = _state(ledger)
+
+    code = ledger.check(_debit("D0"))
+
+    assert code is None
+    assert _state(ledger) == before
 
 
 def test_settlement_over_hold_flagged() -> None:
@@ -375,6 +433,62 @@ def test_auth_id_first_used_by_unmatched_settlement_rejected() -> None:
     assert _snapshot(ledger) == before
 
 
+def _settle_on(
+    account: str, event_id: str, auth_id: str, amount: Money, day: int = 2
+) -> Settlement:
+    return Settlement(
+        event_id, account, booked_day=day, value_day=day, auth_id=auth_id, amount=amount
+    )
+
+
+def test_unmatched_settlement_claims_auth_id_for_its_account() -> None:
+    ledger = _funded()
+    ledger.open_account("ACC-003", AED)
+    first = ledger.apply(_settle("S1", "H9", "50.00"))
+    second = _settle_on("ACC-003", "S2", "H9", _aed("30.00"), day=3)
+    before = _snapshot(ledger)
+    balance_before = _balance(ledger, "ACC-003")
+
+    code = ledger.check(second)
+    outcome = ledger.apply(second)
+
+    assert first.status is Status.POSTED
+    assert first.flags == frozenset({"unmatched"})
+    assert code == "auth_on_other_account"
+    assert outcome.status is Status.REJECTED
+    assert outcome.reason == "auth_on_other_account"
+    assert _balance(ledger, "ACC-003") == balance_before
+    assert _snapshot(ledger) == before
+
+
+def test_rejected_settlement_does_not_claim_auth_id() -> None:
+    ledger = _funded()
+    ledger.open_account("ACC-003", AED)
+    first = ledger.apply(_settle_on("ACC-001", "S1", "H9", Money.of("5.000", BHD)))
+
+    outcome = ledger.apply(_settle_on("ACC-003", "S2", "H9", _aed("30.00"), day=3))
+
+    assert first.status is Status.REJECTED
+    assert first.reason == "currency_mismatch"
+    assert outcome.status is Status.POSTED
+    assert outcome.flags == frozenset({"unmatched"})
+    assert _balance(ledger, "ACC-003") == _aed("-30.00")
+    assert ledger.auth_state("H9") is AuthState.UNMATCHED
+
+
+def test_repeat_unmatched_settlement_on_same_account_posts() -> None:
+    ledger = _funded()
+    ledger.apply(_settle("S1", "H9", "50.00"))
+
+    outcome = ledger.apply(_settle("S2", "H9", "30.00", day=3))
+
+    assert outcome.status is Status.POSTED
+    assert outcome.flags == frozenset({"unmatched"})
+    assert _posting(ledger, "S2").flags == frozenset({"unmatched"})
+    assert _balance(ledger, "ACC-001") == _aed("920.00")
+    assert ledger.auth_state("H9") is AuthState.UNMATCHED
+
+
 def test_reversal_before_target_rejected() -> None:
     ledger = _funded()
     ledger.apply(_debit("D0"))
@@ -386,4 +500,77 @@ def test_reversal_before_target_rejected() -> None:
 
     assert outcome.status is Status.REJECTED
     assert outcome.reason == "reversal_before_target"
+    assert _snapshot(ledger) == before
+
+
+def test_instalments_far_above_minor_units_rejected_before_split() -> None:
+    ledger = _funded()
+    before = _snapshot(ledger)
+
+    outcome = ledger.apply(
+        Credit("C1", "ACC-001", booked_day=2, value_day=2, amount=_aed("1.00"), instalments=10**9)
+    )
+
+    assert outcome.status is Status.REJECTED
+    assert outcome.reason == "instalment_below_minor_unit"
+    assert _snapshot(ledger) == before
+
+
+def test_instalments_equal_to_minor_units_posts_one_unit_each() -> None:
+    ledger = _funded()
+
+    outcome = ledger.apply(
+        Credit("C1", "ACC-001", booked_day=2, value_day=2, amount=_aed("1.00"), instalments=100)
+    )
+
+    assert outcome.status is Status.POSTED
+    assert len(outcome.posting_ids) == 100
+    postings = [_posting(ledger, posting_id) for posting_id in outcome.posting_ids]
+    assert all(p.customer_leg.amount == _aed("0.01") for p in postings)
+    assert _balance(ledger, "ACC-001") == _aed("1001.00")
+
+
+def test_instalments_one_above_minor_units_rejected() -> None:
+    ledger = _funded()
+    before = _snapshot(ledger)
+
+    outcome = ledger.apply(
+        Credit("C1", "ACC-001", booked_day=2, value_day=2, amount=_aed("1.00"), instalments=101)
+    )
+
+    assert outcome.status is Status.REJECTED
+    assert outcome.reason == "instalment_below_minor_unit"
+    assert _snapshot(ledger) == before
+
+
+def test_reversed_unmatched_settlement_releases_auth_id() -> None:
+    ledger = _funded()
+    ledger.open_account("ACC-003", AED)
+    first = ledger.apply(_settle("S1", "H", "50.00"))
+    reversal = ledger.apply(_reversal("R1", "S1"))
+
+    outcome = ledger.apply(_settle_on("ACC-003", "S2", "H", _aed("30.00"), day=3))
+
+    assert first.status is Status.POSTED
+    assert reversal.status is Status.POSTED
+    assert outcome.status is Status.POSTED
+    assert outcome.flags == frozenset({"unmatched"})
+    assert _balance(ledger, "ACC-003") == _aed("-30.00")
+
+
+def test_unreversed_settlement_keeps_auth_id_after_other_reversed() -> None:
+    ledger = _funded()
+    ledger.open_account("ACC-003", AED)
+    first = ledger.apply(_settle("S1", "H", "50.00"))
+    second = ledger.apply(_settle("S2", "H", "30.00"))
+    reversal = ledger.apply(_reversal("R1", "S1"))
+    before = _snapshot(ledger)
+
+    outcome = ledger.apply(_settle_on("ACC-003", "S3", "H", _aed("20.00"), day=3))
+
+    assert first.status is Status.POSTED
+    assert second.status is Status.POSTED
+    assert reversal.status is Status.POSTED
+    assert outcome.status is Status.REJECTED
+    assert outcome.reason == "auth_on_other_account"
     assert _snapshot(ledger) == before

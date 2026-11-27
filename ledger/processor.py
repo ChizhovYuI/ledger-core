@@ -100,14 +100,9 @@ class Ledger:
         seen = self._first.get(event.event_id)
         if seen is not None and seen[0] == event:
             return seen[1]
-        try:
-            if seen is not None:
-                raise RejectedEvent("event_id_reused", event.event_id)
-            plan = self._plan(event)
-        except RejectedEvent as rejected:
-            outcome = Outcome(event.event_id, Status.REJECTED, reason=rejected.code)
-        except LedgerError as error:
-            outcome = Outcome(event.event_id, Status.REJECTED, reason=type(error).__name__)
+        plan, code = self._try_plan(event, seen)
+        if plan is None:
+            outcome = Outcome(event.event_id, Status.REJECTED, reason=code)
         else:
             for posting in plan.postings:
                 self.journal.append(posting)
@@ -172,13 +167,24 @@ class Ledger:
         seen = self._first.get(event.event_id)
         return seen is not None and seen[0] == event
 
-    def precheck(self, event: Event) -> str | None:
-        """The reject code of a check that does not depend on ledger state, or None."""
+    def check(self, event: Event) -> str | None:
+        """The reject code that `apply` would give `event` now, or None. Appends nothing."""
+        seen = self._first.get(event.event_id)
+        if seen is not None and seen[0] == event:
+            return seen[1].reason if seen[1].status is Status.REJECTED else None
+        return self._try_plan(event, seen)[1]
+
+    def _try_plan(
+        self, event: Event, seen: tuple[Event, Outcome] | None
+    ) -> tuple[_Plan, None] | tuple[None, str]:
         try:
-            self._static(event)
+            if seen is not None:
+                raise RejectedEvent("event_id_reused", event.event_id)
+            return self._plan(event), None
         except RejectedEvent as rejected:
-            return rejected.code
-        return None
+            return None, rejected.code
+        except LedgerError as error:
+            return None, type(error).__name__
 
     def _static(self, event: Event) -> AccountRef:
         if event.event_id.startswith(RESERVED_ID_PREFIXES):
@@ -251,9 +257,9 @@ class Ledger:
             raise RejectedEvent("invalid_instalments", repr(n))
         if n == 1:
             return _Plan(postings=(self._posting(event, account, PostingKind.CREDIT),))
-        parts = split(event.amount, n)
-        if any(part.is_zero() for part in parts):
+        if n > int(event.amount.amount.scaleb(event.amount.currency.scale)):
             raise RejectedEvent("instalment_below_minor_unit", f"{event.amount} in {n}")
+        parts = split(event.amount, n)
         return _Plan(
             postings=tuple(
                 self._posting(event, account, PostingKind.CREDIT, part, f"{event.event_id}-{i}")
@@ -279,7 +285,7 @@ class Ledger:
         return _Plan(holds=(hold,), status=Status.APPROVED, ledger=ledger, available_after=after)
 
     def _settlement(self, event: Settlement, account: AccountRef) -> _Plan:
-        known = self._auth_events.get(event.auth_id)
+        known = self._auth_events.get(event.auth_id) or self._first_settlement(event.auth_id)
         if known is not None and known.account != account.code:
             raise RejectedEvent("auth_on_other_account", event.auth_id)
         state = self.auth_state(event.auth_id)
@@ -311,6 +317,19 @@ class Ledger:
         frozen = frozenset(flags)
         posting = self._posting(event, account, PostingKind.SETTLEMENT, flags=frozen)
         return _Plan(postings=(posting,), holds=holds, flags=frozen)
+
+    def _first_settlement(self, auth_id: str) -> Settlement | None:
+        return next(
+            (
+                e
+                for e, o in self._first.values()
+                if isinstance(e, Settlement)
+                and e.auth_id == auth_id
+                and o.status is Status.POSTED
+                and e.event_id not in self._reversed
+            ),
+            None,
+        )
 
     def _reversal(self, event: Reversal, account: AccountRef) -> _Plan:
         seen = self._first.get(event.target_event_id)

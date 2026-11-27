@@ -46,3 +46,6 @@ planning notes. The times are file times, not the exact times of the decisions.
   - A zero-sum property over generated streams.
   - The intentional failing test, run by `make failing`.
 - 2026-11-27 14:29 +07 — AI, read by the owner — Step 6: README, `NUMBERS.md`, `AMBIGUITIES.md`, `REJECTED.md`. Each half and double is from a real run.
+- 2026-11-27 14:55 +07 — AI, read by the owner — Step 7: a rejected event closes no day. `Replay.feed` asks `Ledger.check` for the reject code that `apply` would give, before the close. Two known limits named in `AMBIGUITIES.md`.
+- 2026-11-27 15:20 +07 — AI, read by the owner — Step 7 review fix: a settlement for an unmatched auth id on another account is rejected (`auth_on_other_account`).
+- 2026-11-27 15:35 +07 — AI, read by the owner — Step 7 second review: a reversed settlement frees its auth id; too many instalments are rejected before the split.
